@@ -4,7 +4,7 @@ import logging
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
 from jinja2 import Environment, Template
-from ks_includes.KlippyGtk import KlippyGtk
+from includes.KlippyGtk import KlippyGtk
 
 class ScreenPanel:
     title_spacing = 50

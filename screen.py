@@ -14,13 +14,13 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib, Pango
 from jinja2 import Environment, Template
 
-from ks_includes import functions
-from ks_includes.KlippyWebsocket import KlippyWebsocket
-from ks_includes.Rest import Rest
-from ks_includes.KlippyGtk import KlippyGtk
-from ks_includes.printer import Printer
+from includes import functions
+from includes.KlippyWebsocket import KlippyWebsocket
+from includes.Rest import Rest
+from includes.KlippyGtk import KlippyGtk
+from includes.printer import Printer
 
-from ks_includes.config import KlipperScreenConfig
+from includes.config import KlipperScreenConfig
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
@@ -73,7 +73,7 @@ class KlipperScreen(Gtk.Window):
 
         configfile = os.path.normpath(os.path.expanduser(args.configfile))
 
-        self.lang = gettext.translation('KlipperScreen', localedir='ks_includes/locales', fallback=True)
+        self.lang = gettext.translation('KlipperScreen', localedir='includes/locales', fallback=True)
         self._config = KlipperScreenConfig(configfile, self.lang, self)
 
         logging.debug("OS Language: %s" % os.getenv('LANG'))
@@ -652,7 +652,7 @@ class KlipperScreen(Gtk.Window):
 
         env = os.environ.copy()
         env["MB_KBD_CONFIG"] = "/home/pi/.matchbox/keyboard.xml"
-        env["MB_KBD_CONFIG"] = "ks_includes/locales/keyboard.xml"
+        env["MB_KBD_CONFIG"] = "includes/locales/keyboard.xml"
         p = subprocess.Popen(["matchbox-keyboard", "--xid"], stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, env=env)
         #p = subprocess.Popen(["onboard", "--xid"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
