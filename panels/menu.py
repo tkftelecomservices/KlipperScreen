@@ -25,10 +25,10 @@ class MenuPanel(ScreenPanel):
         self.content.add(self.grid)
 
     def activate(self):
-        self.j2_data = self._printer.get_printer_status_data()
-        self.j2_data.update({
-            'moonraker_connected': self._screen._ws.is_connected()
-        })
+        # self.j2_data = self._printer.get_printer_status_data()
+        # self.j2_data.update({
+        #     'moonraker_connected': self._screen._ws.is_connected()
+        # })
         self.arrangeMenuItems(self.items, 4)
 
     def arrangeMenuItems (self, items, columns, expandLast=False):

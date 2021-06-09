@@ -4,16 +4,16 @@ import logging
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
 
-from ks_includes.KlippyGcodes import KlippyGcodes
 from ks_includes.screen_panel import ScreenPanel
+
 
 def create_panel(*args):
     return MovePanel(*args)
 
+
 class MovePanel(ScreenPanel):
     distance = 1
-    distances = ['.1','.5','1','5','10','25']
-
+    distances = ['.1','.5','1','5','10','50','100']
 
     def initialize(self, panel_name):
         _ = self.lang.gettext
@@ -25,29 +25,25 @@ class MovePanel(ScreenPanel):
         self.labels['x-'] = self._gtk.ButtonImage("move-x-", _("X-"), "color1")
         self.labels['x-'].connect("clicked", self.move, "X", "-")
 
-        self.labels['y+'] = self._gtk.ButtonImage("move-y+", _("Y+"), "color2")
-        self.labels['y+'].connect("clicked", self.move, "Y", "+")
-        self.labels['y-'] = self._gtk.ButtonImage("move-y-", _("Y-"), "color2")
-        self.labels['y-'].connect("clicked", self.move, "Y", "-")
+        #self.labels['y+'] = self._gtk.ButtonImage("move-z+", _("Y+"), "color2")
+        #self.labels['y+'].connect("clicked", self.move, "Y", "+")
+        #self.labels['y-'] = self._gtk.ButtonImage("move-z-", _("Y-"), "color2")
+        #self.labels['y-'].connect("clicked", self.move, "Y", "-")
 
-        self.labels['z+'] = self._gtk.ButtonImage("move-z-", _("Z+"), "color3")
+        self.labels['z+'] = self._gtk.ButtonImage("move-y-", _("Z+"), "color3")
         self.labels['z+'].connect("clicked", self.move, "Z", "+")
-        self.labels['z-'] = self._gtk.ButtonImage("move-z+", _("Z-"), "color3")
+        self.labels['z-'] = self._gtk.ButtonImage("move-y+", _("Z-"), "color3")
         self.labels['z-'].connect("clicked", self.move, "Z", "-")
 
         self.labels['home'] = self._gtk.ButtonImage("home", _("Home All"))
         self.labels['home'].connect("clicked", self.home)
 
-        if self._screen.lang_ltr:
-            grid.attach(self.labels['x+'], 2, 1, 1, 1)
-            grid.attach(self.labels['x-'], 0, 1, 1, 1)
-        else:
-            grid.attach(self.labels['x+'], 0, 1, 1, 1)
-            grid.attach(self.labels['x-'], 2, 1, 1, 1)
-        grid.attach(self.labels['y+'], 1, 0, 1, 1)
-        grid.attach(self.labels['y-'], 1, 1, 1, 1)
-        grid.attach(self.labels['z+'], 3, 0, 1, 1)
-        grid.attach(self.labels['z-'], 3, 1, 1, 1)
+        grid.attach(self.labels['x-'], 0, 1, 1, 1)
+        grid.attach(self.labels['x+'], 2, 1, 1, 1)
+        grid.attach(self.labels['z-'], 1, 0, 1, 1)
+        grid.attach(self.labels['z+'], 1, 1, 1, 1)
+        #grid.attach(self.labels['y+'], 3, 0, 1, 1)
+        #grid.attach(self.labels['y-'], 3, 1, 1, 1)
 
         grid.attach(self.labels['home'], 0, 0, 1, 1)
 
@@ -58,9 +54,9 @@ class MovePanel(ScreenPanel):
             self.labels[i].set_direction(Gtk.TextDirection.LTR)
             self.labels[i].connect("clicked", self.change_distance, i)
             ctx = self.labels[i].get_style_context()
-            if (self._screen.lang_ltr and j == 0) or (not self._screen.lang_ltr and j == len(self.distances)-1):
+            if (j == len(self.distances)-1):
                 ctx.add_class("distbutton_top")
-            elif (not self._screen.lang_ltr and j == 0) or (self._screen.lang_ltr and j == len(self.distances)-1):
+            elif (j == 0):
                 ctx.add_class("distbutton_bottom")
             else:
                 ctx.add_class("distbutton")
@@ -127,7 +123,5 @@ class MovePanel(ScreenPanel):
         dist = str(self.distance) if dir == "+" else "-" + str(self.distance)
         speed = self._config.get_config()['main'].getint("move_speed", 20)
         speed = min(max(1,speed),200) # Cap movement speed between 1-200mm/s
-        self._screen._ws.klippy.gcode_script(
-            "%s\n%s %s%s F%s%s" % (KlippyGcodes.MOVE_RELATIVE, KlippyGcodes.MOVE, axis, dist, speed*60,
-                "\nG90" if self._printer.get_stat("gcode_move", "absolute_coordinates") == True else "")
-        )
+
+        self._screen.api_client.async_send_gcode("G91\nG1 %s%s F6000\nG90" % (axis, dist))

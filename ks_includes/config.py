@@ -9,6 +9,7 @@ from io import StringIO
 from os import path
 
 SCREEN_BLANKING_OPTIONS = [
+    "30",     #30 seconds
     "300",    #5 Minutes
     "900",    #15 Minutes
     "1800",   #30 Minutes
@@ -46,7 +47,7 @@ class KlipperScreenConfig:
                     {"name": _("Slicer"), "value": "slicer"}
             ]}},
             {"screen_blanking": {"section": "main", "name": _("Screen Power Off Time"), "type": "dropdown",
-                "value": "3600", "callback": screen.set_screenblanking_timeout, "options":[
+                "value": "900", "callback": screen.set_screenblanking_timeout, "options":[
                     {"name": _("Off"), "value": "off"}
             ]}}
             #{"": {"section": "main", "name": _(""), "type": ""}}
@@ -92,32 +93,8 @@ class KlipperScreenConfig:
         except:
             logging.exception("Unknown error with config")
 
-        printers = sorted([i for i in self.config.sections() if i.startswith("printer ")])
-        self.printers = []
-        for printer in printers:
-            self.printers.append({
-                printer[8:]: {
-                    "moonraker_host": self.config.get(printer, "moonraker_host", fallback="127.0.0.1"),
-                    "moonraker_port": self.config.get(printer, "moonraker_port", fallback="7125"),
-                    "moonraker_api_key": self.config.get(printer, "moonraker_api_key", fallback=False)
-                }
-            })
-        if len(printers) <= 0:
-            self.printers.append({
-                "Printer": {
-                    "moonraker_host": self.config.get("main", "moonraker_host", fallback="127.0.0.1"),
-                    "moonraker_port": self.config.get("main", "moonraker_port", fallback="7125"),
-                    "moonraker_api_key": self.config.get("main", "moonraker_api_key", fallback="")
-                }
-            })
-
-        conf_printers_debug = self.printers.copy()
-        for printer in conf_printers_debug:
-            name = list(printer)[0]
-            item = conf_printers_debug[conf_printers_debug.index(printer)]
-            if item[list(printer)[0]]['moonraker_api_key'] != "":
-                item[list(printer)[0]]['moonraker_api_key'] = "redacted"
-        logging.debug("Configured printers: %s" % json.dumps(conf_printers_debug, indent=2))
+        self.host = self.config['main'].get('host', "10.0.0.1"),
+        logging.debug(self.host)
 
         for item in self.configurable_options:
             name = list(item)[0]
@@ -220,85 +197,61 @@ class KlipperScreenConfig:
             return False
         return self.config[name].get('name')
 
-
-    def get_preheat_options(self):
-        index = "preheat "
-        items = [i[len(index):] for i in self.config.sections() if i.startswith(index)]
-
-        preheat_options = {}
-        for item in items:
-            preheat_options[item] = self._build_preheat_item(index + item)
-
-        return preheat_options
-
-    def get_printer_config(self, name):
-        if not name.startswith("printer "):
-            name = "printer %s" % name
-
-        if name not in self.config:
-            return None
-        return self.config[name]
-
-    def get_printer_power_name(self):
-        return self.config['settings'].get("printer_power_name", "printer")
-
-    def get_printers(self):
-        return self.printers
-
     def get_user_saved_config(self):
         if self.config_path != self.default_config_path:
             print("Get")
 
     def save_user_config_options(self):
-        save_config = configparser.ConfigParser()
-        for item in self.configurable_options:
-            name = list(item)[0]
-            opt = item[name]
-            curval = self.config[opt['section']].get(name)
-            if curval != opt["value"] or (
-                    self.defined_config != None and opt['section'] in self.defined_config.sections() and
-                    self.defined_config[opt['section']].get(name,None) not in (None, curval)):
-                if opt['section'] not in save_config.sections():
-                    save_config.add_section(opt['section'])
-                save_config.set(opt['section'], name, str(curval))
-
-        macro_sections = [i for i in self.config.sections() if i.startswith("displayed_macros")]
-        for macro_sec in macro_sections:
-                for item in self.config.options(macro_sec):
-                    value = self.config[macro_sec].getboolean(item, fallback=True)
-                    if value == False or (self.defined_config != None and
-                            macro_sec in self.defined_config.sections() and
-                            self.defined_config[macro_sec].getboolean(item, fallback=True) == False and
-                            self.defined_config[macro_sec].getboolean(item, fallback=True) != value):
-                        if macro_sec not in save_config.sections():
-                            save_config.add_section(macro_sec)
-                        save_config.set(macro_sec, item, str(value))
-
-        save_output = self._build_config_string(save_config).split("\n")
-        for i in range(len(save_output)):
-            save_output[i] = "%s %s" % (self.do_not_edit_prefix, save_output[i])
-
-        if self.config_path == self.default_config_path:
-            user_def = ""
-            saved_def = None
-        else:
-            user_def, saved_def = self.separate_saved_config(self.config_path)
-
-        extra_lb = "\n" if saved_def != None else ""
-        contents = "%s\n%s%s\n%s\n%s\n%s\n" % (user_def, self.do_not_edit_line, extra_lb,
-            self.do_not_edit_prefix, "\n".join(save_output), self.do_not_edit_prefix)
-
-        if self.config_path != self.default_config_path:
-            path = self.config_path
-        else:
-            path =  os.path.expanduser("~/KlipperScreen.conf")
-
-        try:
-            file = open(path, 'w')
-            file.write(contents)
-            file.close()
-        except:
-            logging.error("Error writing configuration file")
+        return
+        # save_config = configparser.ConfigParser()
+        # for item in self.configurable_options:
+        #     name = list(item)[0]
+        #     opt = item[name]
+        #     curval = self.config[opt['section']].get(name)
+        #     if curval != opt["value"] or (
+        #             self.defined_config != None and opt['section'] in self.defined_config.sections() and
+        #             self.defined_config[opt['section']].get(name,None) not in (None, curval)):
+        #         if opt['section'] not in save_config.sections():
+        #             save_config.add_section(opt['section'])
+        #         save_config.set(opt['section'], name, str(curval))
+        #
+        # macro_sections = [i for i in self.config.sections() if i.startswith("displayed_macros")]
+        # for macro_sec in macro_sections:
+        #         for item in self.config.options(macro_sec):
+        #             value = self.config[macro_sec].getboolean(item, fallback=True)
+        #             if value == False or (self.defined_config != None and
+        #                     macro_sec in self.defined_config.sections() and
+        #                     self.defined_config[macro_sec].getboolean(item, fallback=True) == False and
+        #                     self.defined_config[macro_sec].getboolean(item, fallback=True) != value):
+        #                 if macro_sec not in save_config.sections():
+        #                     save_config.add_section(macro_sec)
+        #                 save_config.set(macro_sec, item, str(value))
+        #
+        # save_output = self._build_config_string(save_config).split("\n")
+        # for i in range(len(save_output)):
+        #     save_output[i] = "%s %s" % (self.do_not_edit_prefix, save_output[i])
+        #
+        # if self.config_path == self.default_config_path:
+        #     user_def = ""
+        #     saved_def = None
+        # else:
+        #     user_def, saved_def = self.separate_saved_config(self.config_path)
+        #
+        # extra_lb = "\n" if saved_def != None else ""
+        # contents = "%s\n%s%s\n%s\n%s\n%s\n" % (user_def, self.do_not_edit_line, extra_lb,
+        #     self.do_not_edit_prefix, "\n".join(save_output), self.do_not_edit_prefix)
+        #
+        # if self.config_path != self.default_config_path:
+        #     path = self.config_path
+        # else:
+        #     path =  os.path.expanduser("~/KlipperScreen.conf")
+        #
+        # try:
+        #     file = open(path, 'w')
+        #     file.write(contents)
+        #     file.close()
+        # except:
+        #     logging.error("Error writing configuration file")
 
     def set(self, section, name, value):
         self.config.set(section, name, value)
@@ -342,14 +295,3 @@ class KlipperScreenConfig:
             item["params"] = {}
 
         return {name[(len(menu) + 6):]: item}
-
-    def _build_preheat_item(self, name):
-        if name not in self.config:
-            return False
-        cfg = self.config[name]
-        item = {
-            "extruder": cfg.getint("extruder", 0),
-            "bed": cfg.getint("bed", 0),
-            "heater_generic": cfg.getint("heater_generic", 0)
-        }
-        return item

@@ -3,20 +3,11 @@
 import argparse
 import gi
 import gettext
-import time
-import threading
-
-import json
-import requests
-import websocket
 import importlib
 import logging
 import os
-import re
 import signal
 import subprocess
-import sys
-import traceback
 
 
 gi.require_version("Gtk", "3.0")
@@ -25,17 +16,13 @@ from jinja2 import Environment, Template
 
 from ks_includes import functions
 from ks_includes.KlippyWebsocket import KlippyWebsocket
-from ks_includes.KlippyRest import KlippyRest
-from ks_includes.files import KlippyFiles
+from ks_includes.Rest import Rest
 from ks_includes.KlippyGtk import KlippyGtk
 from ks_includes.printer import Printer
-from ks_includes.wifi import WifiManager
 
 from ks_includes.config import KlipperScreenConfig
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
-import numpy
-import matplotlib.pyplot
 
 PRINTER_BASE_STATUS_OBJECTS = [
     'bed_mesh',
@@ -53,6 +40,7 @@ PRINTER_BASE_STATUS_OBJECTS = [
 ]
 
 klipperscreendir = os.getcwd()
+
 
 class KlipperScreen(Gtk.Window):
     """ Class for creating a screen for Klipper via HDMI """
@@ -72,11 +60,12 @@ class KlipperScreen(Gtk.Window):
     popup_message = None
     printer = None
     printer_select_callbacks = []
-    printer_select_prepanel = None
-    rtl_languages = ['he_il']
     subscriptions = []
     shutdown = True
     _ws = None
+    screen_timeout = None
+    screen_timeout_counter = 0
+
 
     def __init__(self, args, version):
         self.dpms_timeout = None
@@ -87,18 +76,7 @@ class KlipperScreen(Gtk.Window):
         self.lang = gettext.translation('KlipperScreen', localedir='ks_includes/locales', fallback=True)
         self._config = KlipperScreenConfig(configfile, self.lang, self)
 
-        self.wifi = WifiManager()
-        self.wifi.start()
-
         logging.debug("OS Language: %s" % os.getenv('LANG'))
-
-        self.lang_ltr = True
-        for lang in self.rtl_languages:
-            if os.getenv('LANG').lower().startswith(lang):
-                self.lang_ltr = False
-                Gtk.Widget.set_default_direction(Gtk.TextDirection.RTL)
-                logging.debug("Enabling RTL mode")
-                break
 
         _ = self.lang.gettext
 
@@ -116,6 +94,10 @@ class KlipperScreen(Gtk.Window):
 
         self.set_screenblanking_timeout(self._config.get_main_config_option('screen_blanking'))
 
+        self.connect("button-press-event", self.on_key_press_event)
+
+        self.screen_timeout = GLib.timeout_add(1000, self.check_screensaver)
+
         # Move mouse to 0,0
         os.system("/usr/bin/xdotool mousemove 0 0")
         # Change cursor to blank
@@ -124,50 +106,50 @@ class KlipperScreen(Gtk.Window):
         else:
             self.get_window().set_cursor(Gdk.Cursor(Gdk.CursorType.BLANK_CURSOR))
 
-        printers = self._config.get_printers()
-        logging.debug("Printers: %s" % printers)
-        if len(printers) == 1:
-            pname = list(self._config.get_printers()[0])[0]
-            self.connect_printer(pname)
-        else:
-            self.show_panel("printer_select","printer_select","Printer Select", 2)
+        self.api_client = Rest(
+            {
+                "on_message": self._api_callback,
+                "on_error": self._api_callback_error
+            },
+            self._config.host
+        )
 
-    def connect_printer_widget(self, widget, name):
-        self.connect_printer(name)
+        self.connect_printer("RMS")
+
+    def check_screensaver(self):
+        self.screen_timeout += 1
+
+        if self.screen_timeout > 10 and "screensaver" not in self._cur_panels:
+            logging.info("### Creating screensaver panel")
+            self.show_panel("screensaver", "screensaver", "Screen Saver", 1, False)
+
+        return True
+
+    def on_key_press_event(self, a, b):
+        self.screen_timeout = 0
+        logging.debug("on_key_event")
+
+        if "screensaver" in self._cur_panels:
+            logging.info("### Remove screensaver panel")
+            self._menu_go_back()
 
     def connect_printer(self, name):
         _ = self.lang.gettext
 
         if self.connected_printer == name:
-            if self.printer_select_prepanel != None:
-                self.show_panel(self.printer_select_prepanel, "","", 2)
-                self.printer_select_prepanel = None
             while len(self.printer_select_callbacks) > 0:
                 i = self.printer_select_callbacks.pop(0)
                 i()
             return
 
         self.printer_select_callbacks = []
-        self.printer_select_prepanel = None
-
-        if self.files is not None:
-            self.files.stop()
-            self.files = None
-
-        for printer in self._config.get_printers():
-            pname = list(printer)[0]
-
-            if pname != name:
-                continue
-            data = printer[pname]
-            break
 
         if self._ws is not None:
             self._ws.close()
         self.connecting = True
 
         logging.info("Connecting to printer: %s" % name)
-        self.apiclient = KlippyRest(data["moonraker_host"], data["moonraker_port"], data["moonraker_api_key"])
+
 
         self.printer = Printer({
             "software_version": "Unknown"
@@ -192,20 +174,16 @@ class KlipperScreen(Gtk.Window):
         self.printer_initializing(_("Connecting to %s") % name)
 
         self.printer.set_callbacks({
+            "idle": self.state_idle,
+            "halted" : self.state_halted,
             "disconnected": self.state_disconnected,
-            "error": self.state_error,
-            "paused": self.state_paused,
-            "printing": self.state_printing,
-            "ready": self.state_ready,
-            "startup": self.state_startup,
-            "shutdown": self.state_shutdown
+            #"error": self.state_error,
+            #"paused": self.state_paused,
+            #"printing": self.state_printing,
+            #"ready": self.state_ready,
+            #"startup": self.state_startup,
+            #"shutdown": self.state_shutdown
         })
-
-        powerdevs = self.apiclient.send_request("machine/device_power/devices")
-        logging.debug("Found power devices: %s" % powerdevs)
-        if powerdevs != False:
-            self.printer.configure_power_devices(powerdevs['result'])
-            self.panels['splash_screen'].show_restart_buttons()
 
         self._ws = KlippyWebsocket(self,
             {
@@ -213,42 +191,16 @@ class KlipperScreen(Gtk.Window):
                 "on_message": self._websocket_callback,
                 "on_close": self.printer_initializing
             },
-            data["moonraker_host"],
-            data["moonraker_port"]
+            self._config.host
         )
         self._ws.initial_connect()
         self.connecting = False
 
-        self.files = KlippyFiles(self)
-        self.files.start()
-
         self.connected_printer = name
         logging.debug("Connected to printer: %s" % name)
 
-    def ws_subscribe(self):
-        requested_updates = {
-            "objects": {
-                "bed_mesh": ["profile_name","mesh_max","mesh_min","probed_matrix"],
-                "configfile": ["config"],
-                "fan": ["speed"],
-                "gcode_move": ["extrude_factor","gcode_position","homing_origin","speed_factor"],
-                "idle_timeout": ["state"],
-                "pause_resume": ["is_paused"],
-                "print_stats": ["print_duration","total_duration","filament_used","filename","state","message"],
-                "toolhead": ["homed_axes","estimated_print_time","print_time","position","extruder"],
-                "virtual_sdcard": ["file_position","is_active","progress"],
-                "webhooks": ["state","state_message"]
-            }
-        }
-        for extruder in self.printer.get_tools():
-            requested_updates['objects'][extruder] = ["target","temperature","pressure_advance","smooth_time"]
-        for h in self.printer.get_heaters():
-            requested_updates['objects'][h] = ["target","temperature"]
-
-        self._ws.klippy.object_subscription(requested_updates)
-
     def _load_panel(self, panel, *args):
-        if not panel in self.load_panel:
+        if panel not in self.load_panel:
             logging.debug("Loading panel: %s" % panel)
             panel_path = os.path.join(os.path.dirname(__file__), 'panels', "%s.py" % panel)
             logging.info("Panel path: %s" % panel_path)
@@ -262,9 +214,11 @@ class KlipperScreen(Gtk.Window):
                 msg = f"Cannot locate create_panel function for {panel}"
                 logging.info(msg)
                 raise Exception(msg)
+            # This wil load callback
             self.load_panel[panel] = getattr(module, "create_panel")
 
         try:
+            # Call create_panel
             return self.load_panel[panel](*args)
         except Exception:
             msg = f"Unable to create panel {panel}"
@@ -300,8 +254,8 @@ class KlipperScreen(Gtk.Window):
             self.add(self.panels[panel_name].get())
             self.show_all()
 
-            if hasattr(self.panels[panel_name],"process_update"):
-                self.panels[panel_name].process_update("notify_status_update", self.printer.get_updates())
+            #if hasattr(self.panels[panel_name],"process_update"):
+                #self.panels[panel_name].process_update("notify_status_update", self.printer.get_updates())
             if hasattr(self.panels[panel_name],"activate"):
                 self.panels[panel_name].activate()
                 self.show_all()
@@ -396,8 +350,6 @@ class KlipperScreen(Gtk.Window):
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
-    def is_printing(self):
-        return self.printer.get_state() == "printing"
 
     def _go_to_submenu(self, widget, name):
         logging.info("#### Go to submenu " + str(name))
@@ -435,9 +387,8 @@ class KlipperScreen(Gtk.Window):
                 if len(self._cur_panels) > 0:
                     self.add(self.panels[self._cur_panels[-1]].get())
                     if hasattr(self.panels[self._cur_panels[-1]], "process_update"):
-                        self.panels[self._cur_panels[-1]].process_update("notify_status_update",
-                            self.printer.get_updates())
-                    if show == True:
+                        self.panels[self._cur_panels[-1]].process_update("notify_status_update", None)
+                    if show:
                         self.show_all()
 
     def _menu_go_back (self, widget=None):
@@ -467,7 +418,11 @@ class KlipperScreen(Gtk.Window):
 
     def check_dpms_state(self):
         state = functions.get_DPMS_state()
-        if state == functions.DPMS_State.Off and "screensaver" not in self._cur_panels:
+
+        logging.debug("check_dpms")
+        logging.debug(str(state))
+
+        if (state == functions.DPMS_State.Off or state == functions.DPMS_State.Suspend) and "screensaver" not in self._cur_panels:
             logging.info("### Creating screensaver panel")
             self.show_panel("screensaver", "screensaver", "Screen Saver", 1, False)
         elif state == functions.DPMS_State.On and "screensaver" in self._cur_panels:
@@ -483,14 +438,15 @@ class KlipperScreen(Gtk.Window):
         if functions.dpms_loaded == False:
             logging.info("DPMS functions not loaded. Unable to protect on button click when DPMS is enabled.")
 
-
-        logging.debug("Changing power save to: %s" % time)
         if time == "off":
             if self.dpms_timeout != None:
                 GLib.source_remove(self.dpms_timeout)
                 self.dpms_timeout = None
             os.system("xset -display :0 -dpms")
+            logging.debug("DPMS is disabled")
             return
+
+        logging.debug("Changing power save to: %s" % time)
 
         time = int(time)
         if time < 0:
@@ -499,11 +455,6 @@ class KlipperScreen(Gtk.Window):
         if self.dpms_timeout == None and functions.dpms_loaded == True:
             self.dpms_timeout = GLib.timeout_add(1000, self.check_dpms_state)
 
-    def show_printer_select(self, widget=None):
-        logging.debug("Saving panel: %s" % self._cur_panels[0])
-        self.printer_select_prepanel = self._cur_panels[0]
-        self.show_panel("printer_select","printer_select","Printer Select", 2)
-
     def state_disconnected(self):
         if "printer_select" in self._cur_panels:
             self.printer_select_callbacks = [self.state_disconnected]
@@ -511,7 +462,7 @@ class KlipperScreen(Gtk.Window):
 
         _ = self.lang.gettext
         logging.debug("### Going to disconnected")
-        self.printer_initializing(_("Klipper has disconnected"))
+        self.printer_initializing(_("Robot has disconnected"))
 
     def state_error(self):
         if "printer_select" in self._cur_panels:
@@ -554,6 +505,23 @@ class KlipperScreen(Gtk.Window):
         if "job_status" in self._cur_panels or "main_menu" in self._cur_panels:
             return
         self.printer_ready()
+    
+    def state_idle(self):
+        # if "printer_select" in self._cur_panels:
+        #     self.printer_select_callbacks = [self.state_ready]
+        #     return
+
+        # # Do not return to main menu if completing a job, timeouts/user input will return
+        # if "job_status" in self._cur_panels or "main_menu" in self._cur_panels:
+        #     return
+        self.printer_ready()
+
+    def state_halted(self):
+        # if "printer_select" in self._cur_panels:
+        #     self.printer_select_callbacks = [self.state_ready]
+        #     return
+
+        self.printer_halted()
 
     def state_startup(self):
         if "printer_select" in self._cur_panels:
@@ -571,41 +539,49 @@ class KlipperScreen(Gtk.Window):
         _ = self.lang.gettext
         self.printer_initializing(_("Klipper has shutdown"))
 
-    def _websocket_callback(self, action, data):
+    def _websocket_callback(self, data):
         _ = self.lang.gettext
 
         if self.connecting == True:
             return
 
-        if action == "notify_klippy_disconnected":
-            logging.debug("Received notify_klippy_disconnected")
-            self.printer.change_state("disconnected")
-            return
-        elif action == "notify_klippy_ready":
-            self.printer.change_state("ready")
-        elif action == "notify_status_update" and self.printer.get_state() != "shutdown":
-            self.printer.process_update(data)
-        elif action == "notify_filelist_changed":
-            logging.debug("Filelist changed: %s", json.dumps(data,indent=2))
-            #self.files.add_file()
-        elif action == "notify_metadata_update":
-            self.files.request_metadata(data['filename'])
-        elif action == "notify_power_changed":
-            logging.debug("Power status changed: %s", data)
-            self.printer.process_power_update(data)
-        elif self.printer.get_state() not in ["error","shutdown"] and action == "notify_gcode_response":
-            if "Klipper state: Shutdown" in data:
-                logging.debug("Shutdown in gcode response, changing state to shutdown")
-                self.printer.change_state("shutdown")
+        self.printer.process_update(dict(data))
 
-            if not (data.startswith("B:") and
-                re.search(r'B:[0-9\.]+\s/[0-9\.]+\sT[0-9]+:[0-9\.]+', data)):
-                if data.startswith("!! "):
-                    self.show_popup_message(data[3:])
-                logging.debug(json.dumps([action, data], indent=2))
+        if "state" in data:
+            if "status" in data['state']:
+                logging.debug(data['state']['status'])
+                self.printer.change_state(data['state']['status'])
 
         if self._cur_panels[-1] in self.subscriptions:
-            self.panels[self._cur_panels[-1]].process_update(action, data)
+            self.panels[self._cur_panels[-1]].process_update("notify_status_update", data)
+
+        # if action == "notify_klippy_disconnected":
+        #     logging.debug("Received notify_klippy_disconnected")
+        #     self.printer.change_state("disconnected")
+        #     return
+        # elif action == "notify_klippy_ready":
+        #     self.printer.change_state("ready")
+        # elif action == "notify_status_update" and self.printer.get_state() != "shutdown":
+        #
+        # elif action == "notify_filelist_changed":
+        #     logging.debug("Filelist changed: %s", json.dumps(data,indent=2))
+        #     #self.files.add_file()
+        # elif action == "notify_metadata_update":
+        #     self.files.request_metadata(data['filename'])
+        # elif action == "notify_power_changed":
+        #     logging.debug("Power status changed: %s", data)
+        #     self.printer.process_power_update(data)
+        # elif self.printer.get_state() not in ["error","shutdown"] and action == "notify_gcode_response":
+        #     if "Klipper state: Shutdown" in data:
+        #         logging.debug("Shutdown in gcode response, changing state to shutdown")
+        #         self.printer.change_state("shutdown")
+        #
+        #     if not (data.startswith("B:") and
+        #         re.search(r'B:[0-9\.]+\s/[0-9\.]+\sT[0-9]+:[0-9\.]+', data)):
+        #         if data.startswith("!! "):
+        #             self.show_popup_message(data[3:])
+        #         logging.debug(json.dumps([action, data], indent=2))
+
 
     def _confirm_send_action(self, widget, text, method, params={}):
         _ = self.lang.gettext
@@ -639,7 +615,7 @@ class KlipperScreen(Gtk.Window):
         widget.destroy()
 
     def _send_action(self, widget, method, params):
-        self._ws.send_method(method, params)
+        self.api_client.async_send_gcode(params['script'])
 
     def printer_initializing(self, text=None):
         self.shutdown = True
@@ -652,33 +628,23 @@ class KlipperScreen(Gtk.Window):
     def init_printer(self):
         _ = self.lang.gettext
 
-        printer_info = self.apiclient.get_printer_info()
-        data = self.apiclient.send_request("printer/objects/query?" + "&".join(PRINTER_BASE_STATUS_OBJECTS))
-        powerdevs = self.apiclient.send_request("machine/device_power/devices")
-        data = data['result']['status']
-
-        # Reinitialize printer, in case the printer was shut down and anything has changed.
-        self.printer.reinit(printer_info['result'], data)
-        self.ws_subscribe()
-
-        if powerdevs != False:
-            self.printer.configure_power_devices(powerdevs['result'])
+        # on connection of websocket, do we want to get some extra robot info?
 
     def printer_ready(self):
+        logging.debug("printer_ready")
+
         _ = self.lang.gettext
         self.close_popup_message()
         # Force update to printer webhooks state in case the update is missed due to websocket subscribe not yet sent
-        self.printer.process_update({"webhooks":{"state":"ready","state_message": "Printer is ready"}})
-        self.show_panel('main_panel', "main_menu", _("Home"), 2,
-            items=self._config.get_menu_items("__main"), extrudercount=self.printer.get_extruder_count())
-        self.ws_subscribe()
-        if "job_status" in self.panels:
-            self.remove_subscription("job_status")
-            del self.panels["job_status"]
+        #self.printer.process_update({"webhooks":{"state":"ready","state_message": "Printer is ready"}})
+        self.show_panel('main_panel', "main_menu", _("Home"), 2, items=self._config.get_menu_items("__main"))
 
-    def printer_printing(self):
+    def printer_halted(self):
+        logging.debug("printer_halted")
+
+        _ = self.lang.gettext
         self.close_popup_message()
-        self.show_panel('job_status',"job_status", "Print Status", 2)
+        self.show_panel('halted_panel', "halted", _("Halted"), 2)
 
     def show_keyboard(self, widget=None):
         if self.keyboard is not None:
@@ -725,6 +691,18 @@ class KlipperScreen(Gtk.Window):
         self.keyboard['panel'].remove(self.keyboard['box'])
         os.kill(self.keyboard['process'].pid, signal.SIGTERM)
         self.keyboard = None
+
+    def _api_callback(self, result):
+        _ = self.lang.gettext
+
+        logging.debug(result)
+
+    def _api_callback_error(self, msg):
+        _ = self.lang.gettext
+
+        self.show_popup_message(msg)
+        logging.debug(msg)
+
 
 def main():
 
