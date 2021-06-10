@@ -13,6 +13,7 @@ class Printer:
     state_callbacks = {
         "idle": None,
         "halted": None,
+        "busy": None,
         # "error": None,
         # "paused": None,
         # "printing": None,
@@ -21,7 +22,7 @@ class Printer:
         # "shutdown": None
     }
 
-    def __init__(self, printer_info, data):
+    def __init__(self):
         self.state = "disconnected"
 
         self.data = {
@@ -83,7 +84,7 @@ class Printer:
 
         logging.debug("Changing state from '%s' to '%s'" % (self.state, state))
         self.state = state
-        if self.state_callbacks[state] != None:
+        if self.state_callbacks[state] is not None:
             logging.debug("Adding callback for state: %s" % state)
             Gdk.threads_add_idle(
                 GLib.PRIORITY_HIGH_IDLE,

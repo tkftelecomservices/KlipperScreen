@@ -6,9 +6,7 @@ import gettext
 import importlib
 import logging
 import os
-import signal
 import subprocess
-
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib, Pango
@@ -24,25 +22,10 @@ from includes.config import KlipperScreenConfig
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
-PRINTER_BASE_STATUS_OBJECTS = [
-    'bed_mesh',
-    'idle_timeout',
-    'configfile',
-    'gcode_move',
-    'fan',
-    'toolhead',
-    'virtual_sdcard',
-    'print_stats',
-    'heater_bed',
-    'extruder',
-    'pause_resume',
-    'webhooks'
-]
-
 klipperscreendir = os.getcwd()
 
 
-class KlipperScreen(Gtk.Window):
+class RmsScreen(Gtk.Window):
     """ Class for creating a screen for Klipper via HDMI """
     _cur_panels = []
     bed_temp_label = None
@@ -64,11 +47,10 @@ class KlipperScreen(Gtk.Window):
     shutdown = True
     _ws = None
     screen_timeout = None
-    screen_timeout_counter = 0
+    screen_saver_timeout = 60
 
 
     def __init__(self, args, version):
-        self.dpms_timeout = None
         self.version = version
 
         configfile = os.path.normpath(os.path.expanduser(args.configfile))
@@ -91,12 +73,11 @@ class KlipperScreen(Gtk.Window):
         self.init_style()
 
         self.printer_initializing(_("Initializing"))
-
-        self.set_screenblanking_timeout(self._config.get_main_config_option('screen_blanking'))
-
-        self.connect("button-press-event", self.on_key_press_event)
+        self.set_screenblanking_timeout()
 
         self.screen_timeout = GLib.timeout_add(1000, self.check_screensaver)
+
+        self.connect("button_press_event", self.disable_screensaver)
 
         # Move mouse to 0,0
         os.system("/usr/bin/xdotool mousemove 0 0")
@@ -116,22 +97,22 @@ class KlipperScreen(Gtk.Window):
 
         self.connect_printer("RMS")
 
-    def check_screensaver(self):
-        self.screen_timeout += 1
+    def disable_screensaver(self, dummy1, dummy2):
+        if "screensaver" in self._cur_panels:
+            self._menu_go_home()
 
-        if self.screen_timeout > 10 and "screensaver" not in self._cur_panels:
+    def check_screensaver(self):
+
+        timeout = int(subprocess.getoutput("xprintidle"))
+        timeout = int(timeout / 1000)
+
+        logging.debug("$$$$$$$ counter:" + str(timeout))
+
+        if timeout > self.screen_saver_timeout and "screensaver" not in self._cur_panels:
             logging.info("### Creating screensaver panel")
             self.show_panel("screensaver", "screensaver", "Screen Saver", 1, False)
 
         return True
-
-    def on_key_press_event(self, a, b):
-        self.screen_timeout = 0
-        logging.debug("on_key_event")
-
-        if "screensaver" in self._cur_panels:
-            logging.info("### Remove screensaver panel")
-            self._menu_go_back()
 
     def connect_printer(self, name):
         _ = self.lang.gettext
@@ -150,20 +131,7 @@ class KlipperScreen(Gtk.Window):
 
         logging.info("Connecting to printer: %s" % name)
 
-
-        self.printer = Printer({
-            "software_version": "Unknown"
-        }, {
-            'configfile': {
-                'config': {}
-            },
-            'print_stats': {
-                'state': 'disconnected'
-            },
-            'virtual_sdcard': {
-                'is_active': False
-            }
-        })
+        self.printer = Printer()
 
         self._remove_all_panels()
         panels = list(self.panels)
@@ -175,8 +143,9 @@ class KlipperScreen(Gtk.Window):
 
         self.printer.set_callbacks({
             "idle": self.state_idle,
-            "halted" : self.state_halted,
+            "halted": self.state_halted,
             "disconnected": self.state_disconnected,
+            "busy": self.state_busy,
             #"error": self.state_error,
             #"paused": self.state_paused,
             #"printing": self.state_printing,
@@ -393,12 +362,12 @@ class KlipperScreen(Gtk.Window):
 
     def _menu_go_back (self, widget=None):
         logging.info("#### Menu go back")
-        self.remove_keyboard()
+        #self.remove_keyboard()
         self._remove_current_panel()
 
     def _menu_go_home(self):
         logging.info("#### Menu go home")
-        self.remove_keyboard()
+        #self.remove_keyboard()
         while len(self._cur_panels) > 1:
             self._remove_current_panel()
 
@@ -416,44 +385,14 @@ class KlipperScreen(Gtk.Window):
                 self.subscriptions.pop(i)
                 return
 
-    def check_dpms_state(self):
-        state = functions.get_DPMS_state()
-
-        logging.debug("check_dpms")
-        logging.debug(str(state))
-
-        if (state == functions.DPMS_State.Off or state == functions.DPMS_State.Suspend) and "screensaver" not in self._cur_panels:
-            logging.info("### Creating screensaver panel")
-            self.show_panel("screensaver", "screensaver", "Screen Saver", 1, False)
-        elif state == functions.DPMS_State.On and "screensaver" in self._cur_panels:
-            logging.info("### Remove screensaver panel")
-            self._menu_go_back()
-        return True
-
-    def set_screenblanking_timeout(self, time):
+    def set_screenblanking_timeout(self):
         # Disable screen blanking
         os.system("xset -display :0 s off")
         os.system("xset -display :0 s noblank")
+        os.system("xset -display :0 -dpms")
 
-        if functions.dpms_loaded == False:
-            logging.info("DPMS functions not loaded. Unable to protect on button click when DPMS is enabled.")
-
-        if time == "off":
-            if self.dpms_timeout != None:
-                GLib.source_remove(self.dpms_timeout)
-                self.dpms_timeout = None
-            os.system("xset -display :0 -dpms")
-            logging.debug("DPMS is disabled")
-            return
-
-        logging.debug("Changing power save to: %s" % time)
-
-        time = int(time)
-        if time < 0:
-            return
-        os.system("xset -display :0 dpms 0 %s 0" % time)
-        if self.dpms_timeout == None and functions.dpms_loaded == True:
-            self.dpms_timeout = GLib.timeout_add(1000, self.check_dpms_state)
+    def state_busy(self):
+        self.show_panel('busy_screen', "busy", "Robot is busy", 2)
 
     def state_disconnected(self):
         if "printer_select" in self._cur_panels:
@@ -631,8 +570,6 @@ class KlipperScreen(Gtk.Window):
         # on connection of websocket, do we want to get some extra robot info?
 
     def printer_ready(self):
-        logging.debug("printer_ready")
-
         _ = self.lang.gettext
         self.close_popup_message()
         # Force update to printer webhooks state in case the update is missed due to websocket subscribe not yet sent
@@ -645,52 +582,6 @@ class KlipperScreen(Gtk.Window):
         _ = self.lang.gettext
         self.close_popup_message()
         self.show_panel('halted_panel', "halted", _("Halted"), 2)
-
-    def show_keyboard(self, widget=None):
-        if self.keyboard is not None:
-            return
-
-        env = os.environ.copy()
-        env["MB_KBD_CONFIG"] = "/home/pi/.matchbox/keyboard.xml"
-        env["MB_KBD_CONFIG"] = "includes/locales/keyboard.xml"
-        p = subprocess.Popen(["matchbox-keyboard", "--xid"], stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, env=env)
-        #p = subprocess.Popen(["onboard", "--xid"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        xid = int(p.stdout.readline())
-        logging.debug("XID %s" % xid)
-        logging.debug("PID %s" % p.pid)
-        keyboard = Gtk.Socket()
-        #keyboard.connect("plug-added", self.plug_added)
-
-        action_bar_width = self.gtk.get_action_bar_width()
-
-        box = Gtk.VBox()
-        box.set_size_request(self.width - action_bar_width, self.keyboard_height)
-        box.add(keyboard)
-
-        cur_panel = self.panels[self._cur_panels[-1]]
-        #for i in ['back','estop','home']:
-        #    if i in cur_panel.control:
-        #        cur_panel.control[i].set_sensitive(False)
-        cur_panel.get().put(box, action_bar_width, self.height - 200)
-        self.show_all()
-        keyboard.add_id(xid)
-        keyboard.show()
-
-        self.keyboard = {
-            "box": box,
-            "panel": cur_panel.get(),
-            "process": p,
-            "socket": keyboard
-        }
-
-    def remove_keyboard(self, widget=None):
-        if self.keyboard is None:
-            return
-
-        self.keyboard['panel'].remove(self.keyboard['box'])
-        os.kill(self.keyboard['process'].pid, signal.SIGTERM)
-        self.keyboard = None
 
     def _api_callback(self, result):
         _ = self.lang.gettext
@@ -723,10 +614,9 @@ def main():
         version
     )
 
-    logging.info("KlipperScreen version: %s" % version)
+    logging.info("RmsScreen version: %s" % version)
 
-
-    win = KlipperScreen(args, version)
+    win = RmsScreen(args, version)
     win.connect("destroy", Gtk.main_quit)
     win.show_all()
     Gtk.main()

@@ -8,16 +8,6 @@ from io import StringIO
 
 from os import path
 
-SCREEN_BLANKING_OPTIONS = [
-    "30",     #30 seconds
-    "300",    #5 Minutes
-    "900",    #15 Minutes
-    "1800",   #30 Minutes
-    "3600",   #1 Hour
-    "7200",   #2 Hours
-    "14400",  #4 Hours
-]
-
 class ConfigError(Exception):
     pass
 
@@ -45,26 +35,9 @@ class KlipperScreenConfig:
                     {"name": _("Duration Only"), "value": "duration"},
                     {"name": _("Filament Used"), "value": "filament"},
                     {"name": _("Slicer"), "value": "slicer"}
-            ]}},
-            {"screen_blanking": {"section": "main", "name": _("Screen Power Off Time"), "type": "dropdown",
-                "value": "900", "callback": screen.set_screenblanking_timeout, "options":[
-                    {"name": _("Off"), "value": "off"}
             ]}}
             #{"": {"section": "main", "name": _(""), "type": ""}}
         ]
-
-        index = self.configurable_options.index(
-            [i for i in self.configurable_options if list(i)[0]=="screen_blanking"][0])
-        for num in SCREEN_BLANKING_OPTIONS:
-            hour = int(int(num)/3600)
-            if hour > 0:
-                name = str(hour) + " " + _n("hour","hours", hour)
-            else:
-                name = str(int(int(num)/60)) + " " + _("minutes")
-            self.configurable_options[index]['screen_blanking']['options'].append({
-                "name": name,
-                "value": num
-            })
 
         self.default_config_path = "%s/includes/%s" % (os.getcwd(), self.configfile_name)
         self.config = configparser.ConfigParser()

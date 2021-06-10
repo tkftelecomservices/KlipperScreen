@@ -57,9 +57,7 @@ class SystemPanel(ScreenPanel):
         self.labels['loadavg'].set_text(
             _("Load Average") + (": %.2f %.2f %.2f" % (lavg[0], lavg[1], lavg[2]))
         )
-
-        #TODO: Shouldn't need this
-        self.system_timeout = GLib.timeout_add(1000, self.update_system_load)
+        return True
 
     def restart_screen(self, widget):
         os.system("sudo systemctl restart KlipperScreen")
