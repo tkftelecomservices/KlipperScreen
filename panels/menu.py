@@ -1,4 +1,3 @@
-import gettext
 import gi
 import logging
 

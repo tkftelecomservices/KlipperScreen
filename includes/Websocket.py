@@ -1,9 +1,7 @@
 #!/usr/bin/python
 
 import gi
-import time
 import threading
-
 import json
 import websocket
 import logging
@@ -12,7 +10,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
 
 
-class KlippyWebsocket(threading.Thread):
+class Websocket(threading.Thread):
     _req_id = 0
     connected = False
     timeout = None
@@ -68,7 +66,7 @@ class KlippyWebsocket(threading.Thread):
         self.ws.send("OK")
 
     def on_open(self, ws):
-        logging.info("Moonraker Websocket Open")
+        logging.info("Websocket Open")
         logging.info("Self.connected = %s" % self.is_connected())
         self.connected = True
         self.timeout = None
@@ -111,15 +109,5 @@ class KlippyWebsocket(threading.Thread):
         self.connect()
         return False
 
-
     def on_error(self, ws, error):
-        logging.debug("Websocket error: %s" % error)
-        # if error.status_code == 401:
-        #     # Check for any pending reconnects and remove. No amount of trying will help
-        #     if self.timeout != None:
-        #         GLib.source_remove(self.timeout)
-        #     Gdk.threads_add_idle(
-        #         GLib.PRIORITY_HIGH_IDLE,
-        #         self._callback['on_close'],
-        #         "Unable to authenticate with moonraker.\nCheck the API key"
-        #     )
+        logging.warning("Websocket error: %s" % error)

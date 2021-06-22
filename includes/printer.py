@@ -5,15 +5,22 @@ import logging
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import  Gdk, GLib
-
+from jsonmerge import Merger
+from jsonmerge import merge
 
 class Printer:
     data = {}
 
+    DISCONNECTED = "disconnected"
+
+    MEASURING = "measuring"
+
     state_callbacks = {
+        "disconnected": None,
         "idle": None,
         "halted": None,
         "busy": None,
+        "measuring": None,
         # "error": None,
         # "paused": None,
         # "printing": None,
@@ -23,11 +30,31 @@ class Printer:
     }
 
     def __init__(self):
-        self.state = "disconnected"
+        self.state = self.DISCONNECTED
 
         self.data = {
             'state': {'upTime': 0}
         }
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "boards": {
+                    "mergeStrategy": "arrayMergeByIndex",
+                },
+                "move": {
+                    "type": "object",
+                    "properties": {
+                        "axes": {
+                            "mergeStrategy": "arrayMergeByIndex",
+                        }
+                    }
+                }
+            },
+            "additionalProperties": False
+        }
+
+        self.merger = Merger(schema)
 
     def merge(self, a, b, path=None):
         "merges b into a"
@@ -45,7 +72,17 @@ class Printer:
         return a
 
     def process_update(self, data):
-        self.data = self.merge(dict(self.data), data)
+
+        self.data = self.merger.merge(self.data, data)
+
+        if "state" in data:
+            if "status" in data['state']:
+                state = data['state']['status']
+
+                if self.data['state']['currentTool'] == 0:
+                    state = self.MEASURING
+
+                self.change_state(state)
 
     # def get_updates(self):
     #     updates = self.data.copy()

@@ -77,7 +77,6 @@ class ScreenPanel:
         self.footer = Gtk.Box(spacing=0)
         self.footer.set_hexpand(True)
         self.footer.set_size_request(self._screen.width - action_bar_width, self.footer_spacing)
-        #self.footer.add(footer_label)
         self.footer.pack_end(footer_image, False, False, 10)
 
         if action_bar:
