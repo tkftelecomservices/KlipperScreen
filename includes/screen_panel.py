@@ -11,7 +11,7 @@ class ScreenPanel:
     footer_spacing = 100
     control = {}
 
-    def __init__(self, screen, title, back=True, action_bar=True, printer_name=True):
+    def __init__(self, screen, title, back=True, action_bar=True):
         self._screen = screen
         self._config = screen._config
         self._files = screen.files
@@ -64,10 +64,7 @@ class ScreenPanel:
         self.title.set_hexpand(True)
         self.title.set_halign(Gtk.Align.CENTER)
         self.title.set_valign(Gtk.Align.CENTER)
-        if printer_name:
-            self.set_title("%s | %s" % (self._screen.connected_printer, title))
-        else:
-            self.set_title(title)
+        self.set_title(title)
 
         self.content = Gtk.Box(spacing=0)
         self.content.set_size_request(self._screen.width - action_bar_width, self._screen.height - self.title_spacing - self.footer_spacing)

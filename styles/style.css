@@ -258,6 +258,10 @@ trough {
     margin-left: .25em;
 }
 
+.init-info {
+    font-size: 1.6em;
+}
+
 .printing-info-box {
     padding-left: .25em;
 }

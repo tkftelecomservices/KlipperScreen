@@ -23,16 +23,13 @@ class SystemPanel(ScreenPanel):
         info.set_vexpand(True)
 
         self.labels['loadavg'] = Gtk.Label("temp")
+        self.labels['loadavg'].set_margin_top(50)
         self.update_system_load()
 
         self.system_timeout = GLib.timeout_add(1000, self.update_system_load)
 
-        self.labels['klipper_version'] = Gtk.Label(_("Klipper Version") +
-            (": %s" % 500))
-        self.labels['klipper_version'].set_margin_top(15)
-
-        self.labels['ks_version'] = Gtk.Label(_("KlipperScreen Version") + (": %s" % self._screen.version))
-        self.labels['ks_version'].set_margin_top(15)
+        self.labels['version'] = Gtk.Label(_("Version") + (": %s" % self._screen.version))
+        self.labels['version'].set_margin_top(15)
 
         stream = os.popen('hostname -I')
         ip = stream.read()
@@ -41,8 +38,7 @@ class SystemPanel(ScreenPanel):
         self.labels['network_ip'].set_margin_top(15)
 
         info.add(self.labels['loadavg'])
-        info.add(self.labels['klipper_version'])
-        info.add(self.labels['ks_version'])
+        info.add(self.labels['version'])
         info.add(self.labels['network_ip'])
 
         grid.attach(info, 0, 0, 5, 2)

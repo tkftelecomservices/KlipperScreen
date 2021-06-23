@@ -29,7 +29,6 @@ klipperscreendir = os.getcwd()
 class RmsScreen(Gtk.Window):
     _cur_panels = []
     connecting = False
-    connected_printer = None
     files = None
     load_panel = {}
     panels = {}
@@ -86,7 +85,7 @@ class RmsScreen(Gtk.Window):
             self._config.host
         )
 
-        self.connect_printer("RMS")
+        self.connect_printer()
 
     def disable_screensaver(self, dummy1, dummy2):
         if "screensaver" in self._cur_panels:
@@ -103,17 +102,14 @@ class RmsScreen(Gtk.Window):
 
         return True
 
-    def connect_printer(self, name):
+    def connect_printer(self):
         _ = self.lang.gettext
-
-        if self.connected_printer == name:
-            return
 
         if self._ws is not None:
             self._ws.close()
         self.connecting = True
 
-        logging.info("Connecting to printer: %s" % name)
+        logging.info("Connecting..")
 
         self.printer = Printer()
 
@@ -123,7 +119,7 @@ class RmsScreen(Gtk.Window):
             self.subscriptions = []
         for panel in panels:
             del self.panels[panel]
-        self.printer_initializing(_("Connecting to %s") % name)
+        self.printer_initializing(_("Connecting to RMS system..."))
 
         self.printer.set_callbacks({
             "idle": self.state_idle,
@@ -145,8 +141,7 @@ class RmsScreen(Gtk.Window):
         self._ws.initial_connect()
         self.connecting = False
 
-        self.connected_printer = name
-        logging.debug("Connected to printer: %s" % name)
+        logging.debug("Connected..")
 
     def _load_panel(self, panel, *args):
         if panel not in self.load_panel:
