@@ -16,7 +16,7 @@ from includes import functions
 from includes.Websocket import Websocket
 from includes.Rest import Rest
 from includes.KlippyGtk import KlippyGtk
-from includes.printer import Printer
+from includes.robot import Robot
 
 from includes.config import KlipperScreenConfig
 
@@ -33,7 +33,7 @@ class RmsScreen(Gtk.Window):
     load_panel = {}
     panels = {}
     popup_message = None
-    printer = None
+    robot = None
     subscriptions = []
     shutdown = True
     _ws = None
@@ -111,7 +111,7 @@ class RmsScreen(Gtk.Window):
 
         logging.info("Connecting..")
 
-        self.printer = Printer()
+        self.robot = Robot()
 
         self._remove_all_panels()
         panels = list(self.panels)
@@ -121,7 +121,7 @@ class RmsScreen(Gtk.Window):
             del self.panels[panel]
         self.printer_initializing(_("Connecting to RMS system..."))
 
-        self.printer.set_callbacks({
+        self.robot.set_callbacks({
             "idle": self.state_idle,
             "halted": self.state_halted,
             "disconnected": self.state_disconnected,
@@ -186,7 +186,7 @@ class RmsScreen(Gtk.Window):
                 return
 
             if hasattr(self.panels[panel_name],"process_update"):
-                self.panels[panel_name].process_update(self.printer.get_data())
+                self.panels[panel_name].process_update(self.robot.get_data())
 
         try:
             if remove == 2:
@@ -207,7 +207,7 @@ class RmsScreen(Gtk.Window):
             self.show_all()
 
             if hasattr(self.panels[panel_name],"process_update"):
-                self.panels[panel_name].process_update(self.printer.get_data())
+                self.panels[panel_name].process_update(self.robot.get_data())
             if hasattr(self.panels[panel_name],"activate"):
                 self.panels[panel_name].activate()
                 self.show_all()
@@ -404,7 +404,7 @@ class RmsScreen(Gtk.Window):
         if self.connecting:
             return
 
-        self.printer.process_update(data)
+        self.robot.process_update(data)
 
         # state = "disconnected"
         #
@@ -421,10 +421,10 @@ class RmsScreen(Gtk.Window):
 
         # update active panel, when new data is received from websocket.
         if hasattr(self.panels[self._cur_panels[-1]], "process_update"):
-            self.panels[self._cur_panels[-1]].process_update(self.printer.data)
+            self.panels[self._cur_panels[-1]].process_update(self.robot.data)
 
     def _websocket_disconnected(self, text=None):
-        self.printer.change_state(self.printer.DISCONNECTED)
+        self.robot.change_state(self.printer.DISCONNECTED)
 
     def _confirm_send_action(self, widget, text, method, params={}):
         _ = self.lang.gettext
@@ -448,6 +448,7 @@ class RmsScreen(Gtk.Window):
         label.set_halign(Gtk.Align.CENTER)
         label.set_line_wrap(True)
         label.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        label.get_style_context().add_class("init-info")
 
         dialog = self.gtk.Dialog(self, buttons, label, self._confirm_send_action_response,  method, params)
 

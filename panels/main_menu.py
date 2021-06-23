@@ -44,10 +44,7 @@ class MainPanel(MenuPanel):
         self.labels['status'].set_halign(Gtk.Align.START)
         self.labels['status'].set_vexpand(False)
         self.labels['status'].get_style_context().add_class("printing-filename")
-        self.labels['lcdmessage'] = Gtk.Label("lcdmessage")
-        self.labels['lcdmessage'].set_halign(Gtk.Align.START)
-        self.labels['lcdmessage'].set_vexpand(False)
-        self.labels['lcdmessage'].get_style_context().add_class("printing-status")
+
 
         heater_bed = self._gtk.Image("bed.svg", None, .6, .6)
         self.labels['heater_bed'] = Gtk.Label(label="MCU")
@@ -124,7 +121,6 @@ class MainPanel(MenuPanel):
         self.labels['sfe_grid'] = sfe_grid
 
         fi_box.add(self.labels['status'])  # , True, True, 0)
-        fi_box.add(self.labels['lcdmessage'])  # , True, True, 0)
         fi_box.set_valign(Gtk.Align.CENTER)
 
         info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -132,18 +128,8 @@ class MainPanel(MenuPanel):
         info.set_hexpand(True)
         info.set_vexpand(True)
 
-        status_icon = self._gtk.Image("ok.svg", None, 1, 1)
 
-        status_icon_box = Gtk.Box(spacing=0)
-        status_icon_box.add(status_icon)
 
-        # box = Gtk.Box()
-        # box.set_hexpand(True)
-        # box.set_vexpand(True)
-        # box.set_halign(Gtk.Align.CENTER)
-        # self.labels['progress_text'] = Gtk.Label()
-        # self.labels['progress_text'].get_style_context().add_class("printing-progress-text")
-        # box.add(self.labels['status-icon'])
 
         self.labels['i1_box'] = Gtk.HBox(spacing=0)
         self.labels['i1_box'].set_vexpand(True)
@@ -157,29 +143,23 @@ class MainPanel(MenuPanel):
         self.labels['info_grid'].attach(self.labels['i1_box'], 0, 0, 1, 1)
         self.labels['info_grid'].attach(self.labels['i2_box'], 1, 0, 1, 1)
 
-        grid.attach(status_icon_box, 0, 0, 1, 1)
-        grid.attach(fi_box, 1, 0, 3, 1)
+        grid.attach(fi_box, 0, 0, 4, 1)
         grid.attach(self.labels['info_grid'], 0, 1, 4, 2)
 
         grid.attach(self.arrangeMenuItems(self.items, 4, True), 0, 3, 4, 1)
-
-        #self.labels['thumbnail'] = self._gtk.Image("file.svg", False, 1.6, 1.6)
 
         # self.add_labels()
         #self.labels['i1_box'].add(self.labels['thumbnail'])
         self.labels['i2_box'].add(self.labels['temp_grid'])
         self.labels['i2_box'].add(self.labels['pos_box'])
-        self.labels['i2_box'].add(self.labels['sfe_grid'])
+        #self.labels['i2_box'].add(self.labels['sfe_grid'])
         self.labels['i2_box'].add(self.labels['it_box'])
-        self.labels['i2_box'].add(self.labels['itl_box'])
+        #self.labels['i2_box'].add(self.labels['itl_box'])
 
         self.content.add(grid)
         self.layout.show_all()
 
         self._screen.add_subscription(panel_name)
-
-    def debug(self, widget):
-        logging.debug(str(self._screen.printer.data))
 
     def activate(self):
         return
@@ -200,19 +180,19 @@ class MainPanel(MenuPanel):
         ctx.stroke()
 
     def process_update(self, data):
-        self.labels['status'].set_text("%s" % self._screen.printer.data['state']['status'])
+        self.labels['status'].set_text("Status: %s" % self._screen.robot.evaluate_state())
 
-        self.labels['pos_x'].set_text("X: %.2f" % (self._screen.printer.data['move']['axes'][0]['machinePosition']))
-        self.labels['pos_y'].set_text("Y: %.2f" % (self._screen.printer.data['move']['axes'][1]['machinePosition']))
-        self.labels['pos_z'].set_text("Z: %.2f" % (self._screen.printer.data['move']['axes'][2]['machinePosition']))
+        self.labels['pos_x'].set_text("X: %.2f" % (self._screen.robot.data['move']['axes'][0]['machinePosition']))
+        self.labels['pos_y'].set_text("Y: %.2f" % (self._screen.robot.data['move']['axes'][1]['machinePosition']))
+        self.labels['pos_z'].set_text("Z: %.2f" % (self._screen.robot.data['move']['axes'][2]['machinePosition']))
 
         #logging.debug(str(self._screen.printer.data['move']['axes'][0]))
 
         self.labels['heater_bed'].set_markup(
-            "MCU: %.1f °C" % (self._screen.printer.data['boards'][0]['mcuTemp']['current'])
+            "MCU: %.1f °C" % (self._screen.robot.data['boards'][0]['mcuTemp']['current'])
         )
 
-        self.labels['duration'].set_text(str(self._gtk.formatTimeString(self._screen.printer.data['state']['upTime'])))
+        self.labels['duration'].set_text(str(self._gtk.formatTimeString(self._screen.robot.data['state']['upTime'])))
 
         #self.labels['progress_text'].set_text("%s%%" % (str(min(int(0.7 * 100), 100))))
 

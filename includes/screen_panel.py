@@ -16,7 +16,6 @@ class ScreenPanel:
         self._config = screen._config
         self._files = screen.files
         self.lang = self._screen.lang
-        self._printer = screen.printer
         self.labels = {}
         self._gtk = screen.gtk
 

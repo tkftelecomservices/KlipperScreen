@@ -345,3 +345,8 @@ trough {
 .error {
 	background-color: rgba(204, 30, 30, 0.7);
 }
+
+.header {
+	font-size: 4em;
+	color: rgba(204, 30, 30, 0.7);
+}

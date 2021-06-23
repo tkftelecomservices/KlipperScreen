@@ -25,6 +25,7 @@ class BusyPanel(ScreenPanel):
         info.set_halign(Gtk.Align.CENTER)
 
         self.labels['system_busy'] = Gtk.Label("Please wait for robot to complete it's action!")
+        self.labels['system_busy'].get_style_context().add_class("init-info")
 
         info.add(self.labels['system_busy'])
 

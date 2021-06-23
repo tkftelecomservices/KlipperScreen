@@ -22,10 +22,13 @@ class HaltedPanel(ScreenPanel):
     def initialize(self, panel_name):
         _ = self.lang.gettext
 
-        self.labels['text'] = Gtk.Label(_("System halted..."))
+        image = self._gtk.Image("emergency.svg", None, 5, 5)
+
+        self.labels['text'] = Gtk.Label(_("Status: halted..."))
         self.labels['text'].set_line_wrap(True)
         self.labels['text'].set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
         self.labels['text'].set_halign(Gtk.Align.CENTER)
+        self.labels['text'].get_style_context().add_class("init-info")
 
         self.labels['actions'] = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.labels['actions'].set_hexpand(True)
@@ -40,6 +43,7 @@ class HaltedPanel(ScreenPanel):
         self.labels['actions'].show_all()
 
         main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
+        main.pack_start(image, True, True, 15)
         main.pack_end(self.labels['actions'], False, False, 10)
         main.pack_end(self.labels['text'], True, True, 10)
 
